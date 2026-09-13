@@ -29,7 +29,11 @@ export async function handleStream(searchParams: URLSearchParams): Promise<Respo
     });
   }
 
-  return json({ success: false, error: "No streaming data found" }, 404);
+  return json({
+    success: false,
+    error: "No streaming data found",
+    hint: "YouTube is blocking stream extractors on this server IP. Try again later or another track.",
+  }, 404);
 }
 
 export async function handleProxy(searchParams: URLSearchParams, req: Request): Promise<Response> {
@@ -60,7 +64,7 @@ export async function handleProxy(searchParams: URLSearchParams, req: Request): 
     responseHeaders.set("Content-Type", response.headers.get("Content-Type") || "audio/mp4");
     if (response.headers.get("Content-Length")) responseHeaders.set("Content-Length", response.headers.get("Content-Length")!);
     if (response.headers.get("Content-Range")) responseHeaders.set("Content-Range", response.headers.get("Content-Range")!);
-    responseHeaders.set("Accept-Ranges", response.headers.get("Accept-Ranges") || "bytes");
+    if (response.headers.get("Accept-Ranges")) responseHeaders.set("Accept-Ranges", response.headers.get("Accept-Ranges")!);
 
     return new Response(response.body, { status: response.status, headers: responseHeaders });
   } catch (err) {
