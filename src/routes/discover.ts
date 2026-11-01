@@ -1,6 +1,6 @@
 /**
  * Discovery Routes
- * /api/charts, /api/moods, /api/trending, /api/radio, /api/similar, /api/top/*
+ * /api/charts, /api/moods, /api/trending, /api/radio, /api/similar, /api/top/*, /api/recommend
  */
 
 import { json, error } from "../helpers/response.ts";
@@ -8,6 +8,7 @@ import { matchRoute } from "../helpers/router.ts";
 import type { YTMusic } from "../services/ytmusic.ts";
 import type { YouTubeSearch } from "../services/youtube-search.ts";
 import { getTrendingMusic, getRadio, getTopArtists, getTopTracks, getSimilarTracks } from "../services/discovery.ts";
+import { getRecommendations, type RecommendSeed } from "../services/recommend.ts";
 
 export async function handleDiscoverRoutes(pathname: string, searchParams: URLSearchParams, ytmusic: YTMusic, youtubeSearch: YouTubeSearch): Promise<Response | null> {
   if (pathname === "/api/charts") {
@@ -45,6 +46,12 @@ export async function handleDiscoverRoutes(pathname: string, searchParams: URLSe
     return json(await getRadio(videoId, ytmusic));
   }
 
+  // Also support /api/radio/:videoId for convenience
+  const radioParams = matchRoute(pathname, "/api/radio/:videoId");
+  if (radioParams) {
+    return json(await getRadio(radioParams.videoId, ytmusic));
+  }
+
   if (pathname === "/api/similar") {
     const title = searchParams.get("title"), artist = searchParams.get("artist");
     if (!title || !artist) return error("Missing title or artist");
@@ -59,6 +66,43 @@ export async function handleDiscoverRoutes(pathname: string, searchParams: URLSe
 
   if (pathname === "/api/top/tracks") {
     return json(await getTopTracks(searchParams.get("country") || undefined, parseInt(searchParams.get("limit") || "20"), ytmusic));
+  }
+
+  // ─── Recommendation Engine ────────────────────────────────
+  if (pathname === "/api/recommend") {
+    const limit = parseInt(searchParams.get("limit") || "40");
+    const excludeIds = (searchParams.get("exclude") || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const country = searchParams.get("country") || undefined;
+
+    // Seeds can come as:
+    // - videoIds=id1,id2
+    // - or JSON body (handled below if POST)
+    // - or seed=title|artist&seed=...
+    const seeds: RecommendSeed[] = [];
+
+    const videoIdsParam = searchParams.get("videoIds") || searchParams.get("seeds") || "";
+    for (const id of videoIdsParam.split(",").map((s) => s.trim()).filter(Boolean)) {
+      seeds.push({ videoId: id });
+    }
+
+    // Also accept repeated seed=Title|Artist
+    for (const [key, value] of searchParams.entries()) {
+      if (key === "seed" && value.includes("|")) {
+        const [title, artist] = value.split("|").map((s) => s.trim());
+        if (title && artist) seeds.push({ title, artist });
+      }
+    }
+
+    // Single videoId convenience
+    const single = searchParams.get("videoId");
+    if (single) seeds.unshift({ videoId: single });
+
+    const result = await getRecommendations(
+      { seeds, limit, excludeIds, country },
+      ytmusic,
+      youtubeSearch,
+    );
+    return json(result);
   }
 
   return null;
