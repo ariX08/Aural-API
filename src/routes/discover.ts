@@ -46,7 +46,6 @@ export async function handleDiscoverRoutes(pathname: string, searchParams: URLSe
     return json(await getRadio(videoId, ytmusic));
   }
 
-  // Also support /api/radio/:videoId for convenience
   const radioParams = matchRoute(pathname, "/api/radio/:videoId");
   if (radioParams) {
     return json(await getRadio(radioParams.videoId, ytmusic));
@@ -68,16 +67,11 @@ export async function handleDiscoverRoutes(pathname: string, searchParams: URLSe
     return json(await getTopTracks(searchParams.get("country") || undefined, parseInt(searchParams.get("limit") || "20"), ytmusic));
   }
 
-  // ─── Recommendation Engine ────────────────────────────────
   if (pathname === "/api/recommend") {
     const limit = parseInt(searchParams.get("limit") || "40");
     const excludeIds = (searchParams.get("exclude") || "").split(",").map((s) => s.trim()).filter(Boolean);
     const country = searchParams.get("country") || undefined;
 
-    // Seeds can come as:
-    // - videoIds=id1,id2
-    // - or JSON body (handled below if POST)
-    // - or seed=title|artist&seed=...
     const seeds: RecommendSeed[] = [];
 
     const videoIdsParam = searchParams.get("videoIds") || searchParams.get("seeds") || "";
@@ -85,17 +79,16 @@ export async function handleDiscoverRoutes(pathname: string, searchParams: URLSe
       seeds.push({ videoId: id });
     }
 
-    // Also accept repeated seed=Title|Artist
+    const single = searchParams.get("videoId");
+    if (single) seeds.unshift({ videoId: single });
+
+    // Accept seed=Title|Artist (and seed1, seed2…)
     for (const [key, value] of searchParams.entries()) {
-      if (key === "seed" && value.includes("|")) {
+      if ((key === "seed" || key.startsWith("seed")) && value.includes("|")) {
         const [title, artist] = value.split("|").map((s) => s.trim());
         if (title && artist) seeds.push({ title, artist });
       }
     }
-
-    // Single videoId convenience
-    const single = searchParams.get("videoId");
-    if (single) seeds.unshift({ videoId: single });
 
     const result = await getRecommendations(
       { seeds, limit, excludeIds, country },
